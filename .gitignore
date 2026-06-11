@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# 生成物・個人データはコミットしない
+outputs/cache/
+outputs/*.csv
+outputs/*.json
+
+# テンプレート・サンプルは含める
+!outputs/sample_runner_input.csv
+!outputs/macro_event_calendar.csv
+!outputs/my_portfolio.example.csv
+!outputs/trade_journal.example.csv
+work/
+*.tar.gz
