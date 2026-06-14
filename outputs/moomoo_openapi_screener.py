@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import subprocess
 import sys
 import time
@@ -279,16 +280,21 @@ def fetch_plate_info(api: Any, quote_ctx: Any, codes: list[str]) -> dict[str, di
 
 def risk_flags(symbol: str, name: str, exchange: str, industry: str, themes: str) -> str:
     normalized = " ".join([symbol, name, exchange, industry, themes]).lower()
+
+    def has_word(word: str) -> bool:
+        # 単語境界マッチ: "spac" が "space"、"otc" が "scotch" 等に誤爆しないように
+        return re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", normalized) is not None
+
     flags = []
-    if "pink" in normalized or "otc" in normalized:
+    if has_word("pink") or has_word("otc"):
         flags.append("OTC/PINK")
-    if "shell" in normalized or "spac" in normalized or "acquisition corp" in normalized:
+    if has_word("shell") or has_word("spac") or "acquisition corp" in normalized:
         flags.append("SPAC/シェル")
     if symbol.upper().endswith("U") or " unit" in normalized:
         flags.append("ユニット株疑い")
-    if "warrant" in normalized or "warrants" in normalized:
+    if has_word("warrant") or has_word("warrants"):
         flags.append("ワラント疑い")
-    if "preferred" in normalized or " preference" in normalized:
+    if has_word("preferred") or " preference" in normalized:
         flags.append("優先株疑い")
     return " / ".join(flags) if flags else "なし"
 
@@ -609,6 +615,28 @@ def load_fundamentals_csv(path: Path | None) -> dict[str, dict[str, str]]:
         return {row["symbol"].strip(): row for row in reader if row.get("symbol", "").strip()}
 
 
+def _load_symbols(symbols_arg: str, symbols_csv: Path | None) -> list[str]:
+    """Build a watchlist from --symbols and/or --symbols-csv. Returns [] if neither."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in symbols_arg.split(","):
+        token = token.strip()
+        if token and token not in seen:
+            out.append(token)
+            seen.add(token)
+    if symbols_csv is not None and symbols_csv.exists():
+        with symbols_csv.open(newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            if "symbol" not in (reader.fieldnames or []):
+                raise SystemExit("--symbols-csv must contain a symbol column")
+            for row in reader:
+                token = row.get("symbol", "").strip()
+                if token and token not in seen:
+                    out.append(token)
+                    seen.add(token)
+    return out
+
+
 def make_bars_fetcher(api: Any, quote_ctx: Any, bars_source: str, start_date: str, end_date: str):
     """Returns fetch(symbol) honoring the source priority. auto = Yahoo first (no quota), moomoo fallback."""
 
@@ -642,46 +670,58 @@ def fetch_position_rows(
     fundamentals: dict[str, dict[str, str]],
     benchmark_override: str | None,
     bars_source: str = "auto",
+    symbols: list[str] | None = None,
 ) -> list[dict[str, str]]:
-    filters = {
-        "price": make_simple_filter(api, ("CUR_PRICE",), preset.price_min, preset.price_max),
-        "market_cap": make_simple_filter(api, ("MARKET_VAL",), preset.market_cap_min, preset.market_cap_max),
-        "distance_to_52w_high_pct": make_simple_filter(
-            api,
-            ("CUR_PRICE_TO_HIGHEST52_WEEKS_RATIO", "CUR_PRICE_TO_HIGHEST_52WEEKS_RATIO"),
-            preset.high_distance_min,
-            0,
-        ),
-    }
-    filter_list: list[Any] = list(filters.values()) + try_financial_filters(api, preset.csv_market)
-
-    filter_rows: list[dict[str, Any]] = []
-    begin = 0
-    api_market = enum_value(api.Market, preset.api_market)
-    while True:
-        ret, payload = quote_ctx.get_stock_filter(
-            market=api_market,
-            filter_list=filter_list,
-            begin=begin,
-            num=page_size,
+    if symbols:
+        # ウォッチリストモード: 明示銘柄を直接スキャン。市場フィルタ・時価総額上限・
+        # 財務フィルタ・流動性予選を全てスキップし、大型銘柄(三菱重工等)も拾う。
+        filter_rows: list[dict[str, Any]] = [
+            {"symbol": s, "name": "", "market_cap": 0.0} for s in symbols
+        ]
+        print(
+            f"{preset.csv_market}: ウォッチリスト{len(symbols)}銘柄を直接スキャン"
+            f"（市場フィルタ・時価総額上限・予選なし）"
         )
-        if ret != api.RET_OK:
-            raise SystemExit(f"OpenAPI get_stock_filter failed for {preset.api_market}: {payload}")
-        last_page, _all_count, stock_list = payload
-        for item in stock_list:
-            filter_rows.append(
-                {
-                    "symbol": stock_attr(item, "stock_code"),
-                    "name": stock_attr(item, "stock_name"),
-                    "market_cap": field_value(item, filters["market_cap"]),
-                }
+    else:
+        filters = {
+            "price": make_simple_filter(api, ("CUR_PRICE",), preset.price_min, preset.price_max),
+            "market_cap": make_simple_filter(api, ("MARKET_VAL",), preset.market_cap_min, preset.market_cap_max),
+            "distance_to_52w_high_pct": make_simple_filter(
+                api,
+                ("CUR_PRICE_TO_HIGHEST52_WEEKS_RATIO", "CUR_PRICE_TO_HIGHEST_52WEEKS_RATIO"),
+                preset.high_distance_min,
+                0,
+            ),
+        }
+        filter_list: list[Any] = list(filters.values()) + try_financial_filters(api, preset.csv_market)
+
+        filter_rows = []
+        begin = 0
+        api_market = enum_value(api.Market, preset.api_market)
+        while True:
+            ret, payload = quote_ctx.get_stock_filter(
+                market=api_market,
+                filter_list=filter_list,
+                begin=begin,
+                num=page_size,
             )
-            if len(filter_rows) >= max_rows:
+            if ret != api.RET_OK:
+                raise SystemExit(f"OpenAPI get_stock_filter failed for {preset.api_market}: {payload}")
+            last_page, _all_count, stock_list = payload
+            for item in stock_list:
+                filter_rows.append(
+                    {
+                        "symbol": stock_attr(item, "stock_code"),
+                        "name": stock_attr(item, "stock_name"),
+                        "market_cap": field_value(item, filters["market_cap"]),
+                    }
+                )
+                if len(filter_rows) >= max_rows:
+                    break
+            if len(filter_rows) >= max_rows or last_page or not stock_list:
                 break
-        if len(filter_rows) >= max_rows or last_page or not stock_list:
-            break
-        begin += len(stock_list)
-        time.sleep(page_sleep)
+            begin += len(stock_list)
+            time.sleep(page_sleep)
 
     end_date = time.strftime("%Y-%m-%d")
     start_date = time.strftime("%Y-%m-%d", time.localtime(time.time() - history_days * 86400))
@@ -705,19 +745,20 @@ def fetch_position_rows(
 
     snapshots = fetch_snapshots(api, quote_ctx, [row["symbol"] for row in filter_rows], batch_size=100)
 
-    turnover_minimums = {"US": 5_000_000, "HK": 10_000_000, "JP": 300_000_000}
-    turnover_min = turnover_minimums.get(preset.csv_market, 0)
-    liquid_rows = []
-    for row in filter_rows:
-        snap = snapshots.get(str(row["symbol"]), {})
-        if safe_float(snap.get("turnover")) >= turnover_min:
-            liquid_rows.append(row)
-    skipped = len(filter_rows) - len(liquid_rows)
-    if skipped:
-        print(
-            f"{preset.csv_market}: {skipped}銘柄を流動性不足で除外 (歴史K線クォータ節約のため取得前にフィルタ)"
-        )
-    filter_rows = liquid_rows
+    if not symbols:
+        turnover_minimums = {"US": 5_000_000, "HK": 10_000_000, "JP": 300_000_000}
+        turnover_min = turnover_minimums.get(preset.csv_market, 0)
+        liquid_rows = []
+        for row in filter_rows:
+            snap = snapshots.get(str(row["symbol"]), {})
+            if safe_float(snap.get("turnover")) >= turnover_min:
+                liquid_rows.append(row)
+        skipped = len(filter_rows) - len(liquid_rows)
+        if skipped:
+            print(
+                f"{preset.csv_market}: {skipped}銘柄を流動性不足で除外 (歴史K線クォータ節約のため取得前にフィルタ)"
+            )
+        filter_rows = liquid_rows
 
     plates = fetch_plate_info(api, quote_ctx, [row["symbol"] for row in filter_rows])
 
@@ -863,6 +904,16 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional CSV: symbol,revenue_growth_pct,revenue_accel_pp,catalyst",
     )
+    parser.add_argument(
+        "--symbols-csv",
+        type=Path,
+        help="ウォッチリストCSV(symbol列)。指定すると市場フィルタを使わず明示銘柄を直接スキャン(大型も拾う)",
+    )
+    parser.add_argument(
+        "--symbols",
+        default="",
+        help="カンマ区切りのウォッチリスト銘柄。例: JP.7011,JP.7012,JP.7013",
+    )
     parser.add_argument("--input-output", type=Path, default=DEFAULT_OUTPUT, help="Generated scanner input CSV")
     parser.add_argument(
         "--ranked-output",
@@ -894,7 +945,13 @@ def main() -> None:
         rows: list[dict[str, str]] = []
         if args.mode == "position":
             fundamentals = load_fundamentals_csv(args.fundamentals_csv)
+            watchlist = _load_symbols(args.symbols, args.symbols_csv)
             for market in selected_markets:
+                market_symbols = (
+                    [s for s in watchlist if s.upper().startswith(f"{market}.")] if watchlist else None
+                )
+                if watchlist and not market_symbols:
+                    continue
                 try:
                     market_rows = fetch_position_rows(
                         api=api,
@@ -908,6 +965,7 @@ def main() -> None:
                         fundamentals=fundamentals,
                         benchmark_override=args.benchmark or None,
                         bars_source=args.bars_source,
+                        symbols=market_symbols,
                     )
                 except (SystemExit, RuntimeError) as exc:
                     print(f"{market}: スキャン失敗、他市場は継続 ({exc})", file=sys.stderr)
