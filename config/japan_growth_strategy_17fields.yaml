@@ -8,69 +8,123 @@
 #   base_score:  A=10, B=6, C=3
 #   rank_bonus:  A=+5, B=+2, C=+0
 #   keyword_hit: 1ヒットごと+1 (最大+5)
+#   budget_bonus: 確定=+3, 具体化=+1, 計画=0  (合計上限20の内側で加算)
 #   合計上限: 20点
+#
+# 予算について（重要）:
+#   17分野ごとの「予算配分割合(%)」は2026年夏の官民投資ロードマップ
+#   まで公式に分解公表されない。よって本configは割合(%)ではなく、
+#   「金が確定的についているか」のティアを使う。捏造した割合は入れない。
+#
+#   全体枠: 2025年度補正18.3兆円のうち6.4兆円が危機管理投資・成長投資
+#           (17分野共通の原資。分野別内訳は未公表)
+#   budget_tier:
+#     確定   = 大型予算が確定済み (防衛43兆円/5年、AI半導体1兆円/年目標)
+#     具体化 = 具体的プロジェクト・期限あり、予算形成中 (海洋レアアース等)
+#     計画   = 分野指定済みだが個別予算は未公表 (夏ロードマップ待ち)
 #
 # keywords: 銘柄の industry / themes / name に対する部分一致。
 #   英語(moomoo plate名)と日本語の両方を含める。
+
+budget_envelope:
+  source: 2025年度補正予算
+  total_jpy: 18.3兆円
+  growth_investment_jpy: 6.4兆円
+  note: 危機管理投資・成長投資。17分野共通の原資で分野別内訳は未公表。
 
 scoring:
   base_score: {A: 10, B: 6, C: 3}
   rank_bonus: {A: 5, B: 2, C: 0}
   keyword_hit_bonus_per_hit: 1
   keyword_hit_bonus_max: 5
+  budget_bonus: {確定: 3, 具体化: 1, 計画: 0}
   total_cap: 20
 
 fields:
   - name: AI・半導体
     rank: A
+    budget_tier: 確定
+    budget_note: 半導体支援 毎年約1兆円目標(議連)、2026年度本予算反映見通し。AIロボティクスは2026年3月末にロードマップ案。
     keywords: [semiconductor, semiconductors, chip, foundry, wafer, ai, artificial intelligence, gpu, data center, datacenter, 半導体, 半导体, 計測, 精密機器, precision instrument, 電子部品, electronic component, 検査装置, テスト, advantest]
   - name: 防衛産業
     rank: A
+    budget_tier: 確定
+    budget_note: 防衛力整備計画 5年間43兆円(2023-2027年度)、GDP比2%へ。17分野で最も確定的な大型予算。
     keywords: [defense, defence, aerospace & defense, military, weapon, missile, 防衛, 防衛産業, 兵器, ミサイル, 火薬, ordnance]
   - name: 造船
     rank: A
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。ゼロエミ船・自動運航船が対象。夏のロードマップ待ち。
     keywords: [shipbuilding, shipyard, marine, vessel, 造船, 船舶, 舶用, heavy industries]
   - name: マテリアル・重要鉱物・部素材
     rank: A
+    budget_tier: 具体化
+    budget_note: 重要鉱物の供給確保。レアアースは海洋分野と連動。電池材料・部素材が対象。
     keywords: [materials, specialty chemical, chemicals, rare metal, rare earth, mining, smelting, battery material, 素材, 部素材, 化学, 化成, 鉱業, 製錬, 希少金属, レアアース, 電池材料, 非鉄金属, nonferrous]
   - name: 情報通信
     rank: A
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。5G/6G・衛星通信の国産化が対象。
     keywords: [telecom, telecommunication, 5g, 6g, satellite communication, network, cloud, 通信, 情報通信, 衛星通信, クラウド, ネットワーク]
   - name: コンテンツ
     rank: A
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。経営者調査でアニメが期待度断トツ。海外展開・IP化支援が対象。
     keywords: [content, animation, anime, game, gaming, entertainment, movie, publishing, コンテンツ, アニメ, ゲーム, 娯楽, 出版, 映画, 玩具, toy]
 
   - name: 航空・宇宙
     rank: B
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。防衛・民間の国内開発力強化が対象。
     keywords: [aerospace, space, aviation, aircraft, rocket, launch, satellite, 航空, 宇宙, ロケット, 衛星, 航空機]
   - name: デジタル・サイバーセキュリティ
     rank: B
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。情報インフラ防御・国産化が対象。
     keywords: [cybersecurity, cyber security, security software, digital, it service, software, セキュリティ, サイバー, デジタル, ソフトウェア]
   - name: 防災・国土強靱化
     rank: B
+    budget_tier: 具体化
+    budget_note: 国土強靱化は既存の継続的予算枠あり。インフラ更新・災害対応設備が対象。
     keywords: [construction, infrastructure, civil engineering, disaster, resilience, ゼネコン, 建設, 土木, インフラ, 防災, 国土強靱化, 耐震]
   - name: 資源・エネルギー安全保障・GX
     rank: B
+    budget_tier: 具体化
+    budget_note: GX経済移行債20兆円規模の既存枠と連動。再エネ・水素が対象。最も広い分野。
     keywords: [energy, renewable, hydrogen, solar, wind power, power, utility, gx, green, decarbon, エネルギー, 再生可能, 水素, 太陽光, 風力, 電力, 脱炭素, 蓄電]
   - name: 創薬・先端医療
     rank: B
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。再生医療・遺伝子治療の国内拠点整備が対象。
     keywords: [pharmaceutical, pharma, biotech, drug, regenerative, gene therapy, medical, 医薬, 製薬, 創薬, バイオ, 再生医療, 遺伝子, 医療]
   - name: 港湾ロジスティクス
     rank: B
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。デジタル化・自動化が対象。
     keywords: [logistics, port, harbor, warehouse, supply chain, freight, 港湾, 物流, 倉庫, ロジスティクス]
   - name: 海洋
     rank: B
+    budget_tier: 具体化
+    budget_note: レアアース南鳥島で2027年2月試掘本格化、脱水処理施設建設計画。具体化が進んだ2分野の一つ。
     keywords: [marine, offshore, ocean, offshore wind, autonomous vessel, 海洋, 洋上風力, 海底, 自律無人船]
 
   - name: 量子
     rank: C
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。商用化前の長期テーマ。
     keywords: [quantum, quantum computing, quantum communication, 量子]
   - name: フュージョンエネルギー
     rank: C
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。実用化は2030年代後半以降の長期テーマ。
     keywords: [fusion, nuclear fusion, フュージョン, 核融合]
   - name: 合成生物学・バイオ
     rank: C
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。研究段階。
     keywords: [synthetic biology, bioengineering, biomanufacturing, 合成生物, バイオものづくり]
   - name: フードテック
     rank: C
+    budget_tier: 計画
+    budget_note: 個別予算は未公表。市場未成熟。
     keywords: [foodtech, food tech, alternative protein, alternative meat, cultured meat, フードテック, 代替肉, 培養肉, 食品ロス]

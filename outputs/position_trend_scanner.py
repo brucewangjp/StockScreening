@@ -342,6 +342,8 @@ def rank(candidates: Iterable[Candidate]) -> list[dict[str, str]]:
                 "policy_theme_score": "" if policy is None else str(policy.score),
                 "policy_theme_main": "" if policy is None else policy.main_field,
                 "policy_theme_rank": "" if policy is None else policy.rank,
+                "policy_budget_tier": "" if policy is None else policy.budget_tier,
+                "policy_budget_note": "" if policy is None else policy.budget_note,
                 "policy_theme_sub": "" if policy is None else policy.sub_fields,
                 "policy_theme_reason": "" if policy is None else policy.reason,
                 "policy_theme_keywords_hit": "" if policy is None else policy.keywords_hit,
@@ -384,6 +386,7 @@ def write_rows(rows: list[dict[str, str]], output: Path) -> None:
     fieldnames = [
         "status", "score", "symbol", "market", "name", "industry", "themes",
         "policy_theme_score", "policy_theme_main", "policy_theme_rank",
+        "policy_budget_tier", "policy_budget_note",
         "policy_theme_sub", "policy_theme_reason", "policy_theme_keywords_hit",
         "price", "turnover", "rs_6m_pct", "off_52w_high_pct",
         "base_depth_pct", "base_len_days", "breakout_new_high", "volume_ratio_20d",

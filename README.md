@@ -94,9 +94,26 @@ python3 outputs/position_sizer.py outputs/position_candidates.csv \
 - Aランク(基礎10+5): 防衛/造船/AI半導体/マテリアル/情報通信/コンテンツ
 - Bランク(基礎6+2): 航空宇宙/サイバー/防災/GX/創薬/港湾/海洋
 - Cランク(基礎3+0): 量子/核融合/合成生物/フードテック
+- 予算ボーナス: 確定+3 / 具体化+1 / 計画0（上限20の内側で加算）
+
+### 予算について（重要）
+
+17分野ごとの「予算配分割合(%)」は2026年夏の官民投資ロードマップまで
+**公式に分解公表されていない**。よって本システムは捏造した割合を入れず、
+「金が確定的についているか」の予算ティアを使う。
+
+- 全体枠: 2025年度補正18.3兆円のうち6.4兆円が危機管理投資・成長投資
+  （17分野共通の原資、分野別内訳は未公表）
+- 確定: 防衛(5年43兆円, GDP比2%)、AI・半導体(毎年約1兆円目標)
+- 具体化: 海洋レアアース(南鳥島2027試掘)、マテリアル、GX、防災
+- 計画: 残り11分野(指定済みだが個別予算は未公表)
+
+予算ティアは policy_theme_score に +0〜+3 で内包し、別カラム
+policy_budget_tier / policy_budget_note でも出力する。
 
 出力カラム: policy_theme_score, policy_theme_main, policy_theme_rank,
-policy_theme_sub, policy_theme_reason, policy_theme_keywords_hit
+policy_budget_tier, policy_budget_note, policy_theme_sub,
+policy_theme_reason, policy_theme_keywords_hit
 
 既知の制約: moomooのJP銘柄テーマデータは英語で粗く、コンセプト分類が
 ノイズを含む（例: 化学企業に"Shipbuilding"タグ）。政策タグは大まかなヒント

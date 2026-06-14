@@ -40,6 +40,8 @@ class PolicyField:
     name: str
     rank: str
     keywords: tuple[str, ...]
+    budget_tier: str = "計画"
+    budget_note: str = ""
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,7 @@ class PolicyConfig:
     rank_bonus: dict[str, int]
     keyword_hit_bonus_per_hit: int
     keyword_hit_bonus_max: int
+    budget_bonus: dict[str, int]
     total_cap: int
     fields: tuple[PolicyField, ...]
 
@@ -60,9 +63,11 @@ class PolicyResult:
     sub_fields: str
     reason: str
     keywords_hit: str
+    budget_tier: str = ""
+    budget_note: str = ""
 
 
-EMPTY_RESULT = PolicyResult(0, "", "", "", "", "")
+EMPTY_RESULT = PolicyResult(0, "", "", "", "", "", "", "")
 
 
 def _load_yaml(path: Path) -> dict:
@@ -90,6 +95,8 @@ def load_policy_config(path: Path | None = None) -> PolicyConfig:
             name=str(item["name"]),
             rank=str(item.get("rank", "C")).upper(),
             keywords=tuple(str(k).lower() for k in item.get("keywords", [])),
+            budget_tier=str(item.get("budget_tier", "計画")),
+            budget_note=str(item.get("budget_note", "")),
         )
         for item in data.get("fields", [])
     )
@@ -98,6 +105,7 @@ def load_policy_config(path: Path | None = None) -> PolicyConfig:
         rank_bonus=dict(scoring.get("rank_bonus", {"A": 5, "B": 2, "C": 0})),
         keyword_hit_bonus_per_hit=int(scoring.get("keyword_hit_bonus_per_hit", 1)),
         keyword_hit_bonus_max=int(scoring.get("keyword_hit_bonus_max", 5)),
+        budget_bonus=dict(scoring.get("budget_bonus", {"確定": 3, "具体化": 1, "計画": 0})),
         total_cap=int(scoring.get("total_cap", 20)),
         fields=fields,
     )
@@ -134,7 +142,8 @@ def score_policy_theme(text: str, config: PolicyConfig) -> PolicyResult:
         len(main_hits) * config.keyword_hit_bonus_per_hit,
         config.keyword_hit_bonus_max,
     )
-    total = min(base + bonus + keyword_bonus, config.total_cap)
+    budget_bonus = config.budget_bonus.get(main_field.budget_tier, 0)
+    total = min(base + bonus + keyword_bonus + budget_bonus, config.total_cap)
 
     sub_fields = " / ".join(field.name for field, _ in matches[1:]) if len(matches) > 1 else ""
     all_hits: list[str] = []
@@ -143,8 +152,8 @@ def score_policy_theme(text: str, config: PolicyConfig) -> PolicyResult:
             if hit not in all_hits:
                 all_hits.append(hit)
     reason = (
-        f"政策テーマ「{main_field.name}」(ランク{main_field.rank}) "
-        f"基礎{base}+ランク{bonus}+キーワード{keyword_bonus}"
+        f"政策テーマ「{main_field.name}」(ランク{main_field.rank}/予算{main_field.budget_tier}) "
+        f"基礎{base}+ランク{bonus}+キーワード{keyword_bonus}+予算{budget_bonus}"
     )
     return PolicyResult(
         score=total,
@@ -153,6 +162,8 @@ def score_policy_theme(text: str, config: PolicyConfig) -> PolicyResult:
         sub_fields=sub_fields,
         reason=reason,
         keywords_hit=", ".join(all_hits),
+        budget_tier=main_field.budget_tier,
+        budget_note=main_field.budget_note,
     )
 
 
@@ -167,4 +178,7 @@ if __name__ == "__main__":
     ]
     for name, text in samples:
         result = score_policy_theme(f"{name} {text}", config)
-        print(f"{name:<32} score={result.score:>2} field={result.main_field or '該当なし'} ({result.rank}) hits=[{result.keywords_hit}]")
+        print(
+            f"{name:<32} score={result.score:>2} field={result.main_field or '該当なし'} "
+            f"({result.rank}/予算{result.budget_tier or '-'}) hits=[{result.keywords_hit}]"
+        )
