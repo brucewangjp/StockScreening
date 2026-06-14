@@ -6,6 +6,8 @@ __pycache__/
 outputs/cache/
 outputs/*.csv
 outputs/*.json
+outputs/scan_full_log.txt
+outputs/scan_summary.md
 
 # テンプレート・サンプルは含める
 !outputs/sample_runner_input.csv

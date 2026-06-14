@@ -1,0 +1,47 @@
+# 米国「構造的成長レンズ」— 技術採用サイクルのセクターテーマ
+#
+# 思想: 米国は世界一効率的な市場。政府テーマは価格(RS)と業績にすぐ織り込まれるため、
+# 日本のような大きな政策加点は二重カウントになる。よって本レンズは小さめの重み
+# (テーマ最大10) に留め、別途 src/structural_growth_score.py で売上再加速ボーナス
+# (最大5) を加える。レンズ合計上限15。買いスコア(0-100)には足し込まない。
+#
+# 金利・景気ではなく「技術採用」「企業投資」「規制承認」「供給不足」で動くテーマを選定。
+#
+# budget_bonus は米国では使わない(全0)。budget_tier は設定しない(既定=計画→+0)。
+
+scoring:
+  base_score: {A: 6, B: 4, C: 2}
+  rank_bonus: {A: 2, B: 1, C: 0}
+  keyword_hit_bonus_per_hit: 1
+  keyword_hit_bonus_max: 2
+  budget_bonus: {確定: 0, 具体化: 0, 計画: 0}
+  total_cap: 10
+
+fields:
+  - name: AIインフラ・データセンター
+    rank: A
+    keywords: [ai, artificial intelligence, data center, datacenter, gpu, accelerator, hyperscaler, cloud, inference]
+  - name: 半導体
+    rank: A
+    keywords: [semiconductor, semiconductors, chip, foundry, wafer, fabless, semiconductor equipment, eda, lithography]
+  - name: サイバーセキュリティ
+    rank: A
+    keywords: [cybersecurity, cyber security, security software, zero trust, endpoint, identity security, firewall]
+  - name: 防衛
+    rank: A
+    keywords: [defense, defence, military, missile, weapon, defense electronics, munitions]
+  - name: 電力インフラ・送電網
+    rank: A
+    keywords: [power, grid, electrical equipment, transmission, transformer, nuclear, utility infrastructure, electrification, energy storage]
+  - name: 肥満症薬・GLP-1
+    rank: A
+    keywords: [glp-1, glp1, obesity, weight loss, metabolic, incretin]
+  - name: 宇宙
+    rank: B
+    keywords: [space, satellite, launch, spaceflight, aerospace, orbital]
+  - name: 医療機器
+    rank: B
+    keywords: [medical device, medical devices, diagnostics, surgical, medtech, life science tools]
+  - name: 再ショアリング・ロボティクス
+    rank: B
+    keywords: [reshoring, automation, robotics, industrial automation, factory automation, onshoring]

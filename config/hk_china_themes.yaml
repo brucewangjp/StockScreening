@@ -1,0 +1,50 @@
+# 香港「中国政策・流動性レンズ」— 中国本土政策テーマ + 流動性
+#
+# 思想: 香港は実質中国政策市場。中国15次五カ年計画(2026-2030)の重点産業が
+# 構造的追い風になる。だが香港小型株は流動性が薄く急騰急落しやすいため、
+# 「上がりそうか」より「逃げられるか」が重要 → 流動性を警告フラグで併走させる。
+#
+# テーマスコア最大12。流動性は src/china_policy_score.py で turnover から判定し、
+# 薄い場合は flag を立てる(スコアは下げない=警告のみ)。買いスコアには足し込まない。
+#
+# キーワードは英語(moomoo HK plate)と中文の両方を含める。
+# Phase 2(未実装): 南向資金、自社株買い額、配当利回り → 要データ追加。
+
+scoring:
+  base_score: {A: 8, B: 5, C: 3}
+  rank_bonus: {A: 4, B: 2, C: 0}
+  keyword_hit_bonus_per_hit: 1
+  keyword_hit_bonus_max: 4
+  budget_bonus: {確定: 0, 具体化: 0, 計画: 0}
+  total_cap: 12
+
+# 流動性ティア(売買代金 HKD)。低 → 流動性リスク警告フラグ。
+liquidity_tiers:
+  high_min: 50000000
+  mid_min: 10000000
+
+fields:
+  - name: AI・新質生産力
+    rank: A
+    keywords: [ai, artificial intelligence, 人工智能, robotics, 机器人, 新质生产力, machine learning, 大模型]
+  - name: EV・新能源
+    rank: A
+    keywords: [ev, electric vehicle, 新能源, 新能源汽车, battery, 电池, 锂电, solar, 光伏, wind, 风电, 储能]
+  - name: 半導体国産化
+    rank: A
+    keywords: [semiconductor, chip, 半导体, 芯片, foundry, 晶圆, 集成电路, 国产化]
+  - name: 低空経済
+    rank: A
+    keywords: [low-altitude, low altitude, evtol, drone, 无人机, 低空经济, 飞行汽车]
+  - name: 医薬・バイオ
+    rank: B
+    keywords: [pharmaceutical, biotech, 医药, 创新药, drug, 生物, biotechnology]
+  - name: 消費刺激
+    rank: B
+    keywords: [consumer, consumption, retail, 消费, 零售, 餐饮, 白酒, 家电]
+  - name: 国企改革・高配当
+    rank: B
+    keywords: [state-owned, soe, 国企, 央企, dividend, 高股息, 红利, 中特估]
+  - name: 先進製造
+    rank: B
+    keywords: [advanced manufacturing, industrial machinery, 高端制造, 机械, 装备, 工业母机]

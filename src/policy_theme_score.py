@@ -70,6 +70,58 @@ class PolicyResult:
 EMPTY_RESULT = PolicyResult(0, "", "", "", "", "", "", "")
 
 
+@dataclass(frozen=True)
+class LensResult:
+    """Uniform result returned by every market lens (JP/US/HK).
+
+    Kept SEPARATE from the 0-100 technical buy score. score is a 0-N
+    structural-beta value; flag is a non-scoring warning (e.g. HK liquidity).
+    """
+
+    lens_type: str
+    score: int
+    main: str
+    detail: str
+    flag: str
+    keywords: str
+
+
+EMPTY_LENS = LensResult("", 0, "", "", "", "")
+
+
+def candidate_text(candidate: object) -> str:
+    """industry + themes + name from a Candidate-like object or dict."""
+    if isinstance(candidate, dict):
+        get = candidate.get
+    else:
+        get = lambda key, default="": getattr(candidate, key, default)  # noqa: E731
+    return f"{get('industry', '')} {get('themes', '')} {get('name', '')}"
+
+
+_JP_CONFIG: PolicyConfig | None = None
+
+
+def japan_config() -> PolicyConfig:
+    global _JP_CONFIG
+    if _JP_CONFIG is None:
+        _JP_CONFIG = load_policy_config(DEFAULT_CONFIG)
+    return _JP_CONFIG
+
+
+def score_japan_lens(candidate: object) -> LensResult:
+    result = score_policy_theme(candidate_text(candidate), japan_config())
+    if result.score == 0:
+        return LensResult("JP政策17分野", 0, "", "", "", "")
+    return LensResult(
+        lens_type="JP政策17分野",
+        score=result.score,
+        main=f"{result.main_field}(予算{result.budget_tier})",
+        detail=result.reason,
+        flag="",
+        keywords=result.keywords_hit,
+    )
+
+
 def _load_yaml(path: Path) -> dict:
     try:
         import yaml  # type: ignore
