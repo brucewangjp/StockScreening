@@ -1,0 +1,76 @@
+# 日本政府「日本成長戦略本部」17戦略分野（2025-11-04発足）
+#
+# 用途: 株式スクリーニングの第一層「産業ベータ」。買いリストではない。
+# policy_theme_score は最終BUY判定には使わず、産業の追い風加点として
+# 技術スコア(0-100)とは別カラムで並走させる。
+#
+# scoring:
+#   base_score:  A=10, B=6, C=3
+#   rank_bonus:  A=+5, B=+2, C=+0
+#   keyword_hit: 1ヒットごと+1 (最大+5)
+#   合計上限: 20点
+#
+# keywords: 銘柄の industry / themes / name に対する部分一致。
+#   英語(moomoo plate名)と日本語の両方を含める。
+
+scoring:
+  base_score: {A: 10, B: 6, C: 3}
+  rank_bonus: {A: 5, B: 2, C: 0}
+  keyword_hit_bonus_per_hit: 1
+  keyword_hit_bonus_max: 5
+  total_cap: 20
+
+fields:
+  - name: AI・半導体
+    rank: A
+    keywords: [semiconductor, semiconductors, chip, foundry, wafer, ai, artificial intelligence, gpu, data center, datacenter, 半導体, 半导体, 計測, 精密機器, precision instrument, 電子部品, electronic component, 検査装置, テスト, advantest]
+  - name: 防衛産業
+    rank: A
+    keywords: [defense, defence, aerospace & defense, military, weapon, missile, 防衛, 防衛産業, 兵器, ミサイル, 火薬, ordnance]
+  - name: 造船
+    rank: A
+    keywords: [shipbuilding, shipyard, marine, vessel, 造船, 船舶, 舶用, heavy industries]
+  - name: マテリアル・重要鉱物・部素材
+    rank: A
+    keywords: [materials, specialty chemical, chemicals, rare metal, rare earth, mining, smelting, battery material, 素材, 部素材, 化学, 化成, 鉱業, 製錬, 希少金属, レアアース, 電池材料, 非鉄金属, nonferrous]
+  - name: 情報通信
+    rank: A
+    keywords: [telecom, telecommunication, 5g, 6g, satellite communication, network, cloud, 通信, 情報通信, 衛星通信, クラウド, ネットワーク]
+  - name: コンテンツ
+    rank: A
+    keywords: [content, animation, anime, game, gaming, entertainment, movie, publishing, コンテンツ, アニメ, ゲーム, 娯楽, 出版, 映画, 玩具, toy]
+
+  - name: 航空・宇宙
+    rank: B
+    keywords: [aerospace, space, aviation, aircraft, rocket, launch, satellite, 航空, 宇宙, ロケット, 衛星, 航空機]
+  - name: デジタル・サイバーセキュリティ
+    rank: B
+    keywords: [cybersecurity, cyber security, security software, digital, it service, software, セキュリティ, サイバー, デジタル, ソフトウェア]
+  - name: 防災・国土強靱化
+    rank: B
+    keywords: [construction, infrastructure, civil engineering, disaster, resilience, ゼネコン, 建設, 土木, インフラ, 防災, 国土強靱化, 耐震]
+  - name: 資源・エネルギー安全保障・GX
+    rank: B
+    keywords: [energy, renewable, hydrogen, solar, wind power, power, utility, gx, green, decarbon, エネルギー, 再生可能, 水素, 太陽光, 風力, 電力, 脱炭素, 蓄電]
+  - name: 創薬・先端医療
+    rank: B
+    keywords: [pharmaceutical, pharma, biotech, drug, regenerative, gene therapy, medical, 医薬, 製薬, 創薬, バイオ, 再生医療, 遺伝子, 医療]
+  - name: 港湾ロジスティクス
+    rank: B
+    keywords: [logistics, port, harbor, warehouse, supply chain, freight, 港湾, 物流, 倉庫, ロジスティクス]
+  - name: 海洋
+    rank: B
+    keywords: [marine, offshore, ocean, offshore wind, autonomous vessel, 海洋, 洋上風力, 海底, 自律無人船]
+
+  - name: 量子
+    rank: C
+    keywords: [quantum, quantum computing, quantum communication, 量子]
+  - name: フュージョンエネルギー
+    rank: C
+    keywords: [fusion, nuclear fusion, フュージョン, 核融合]
+  - name: 合成生物学・バイオ
+    rank: C
+    keywords: [synthetic biology, bioengineering, biomanufacturing, 合成生物, バイオものづくり]
+  - name: フードテック
+    rank: C
+    keywords: [foodtech, food tech, alternative protein, alternative meat, cultured meat, フードテック, 代替肉, 培養肉, 食品ロス]

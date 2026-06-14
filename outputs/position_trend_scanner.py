@@ -14,6 +14,13 @@ Institutional-style pipeline, applied per candidate row:
   3. Status: ALERT = score >= 70 and breakout confirmed today,
              WATCH = score >= 55 (setup forming), otherwise IGNORE.
 
+Policy theme (Japan 17 strategic fields) is computed as a SEPARATE 0-20
+industry-beta score. It is NOT folded into the 0-100 buy score and never
+changes status: a stock is promoted to ALERT only by trend/fundamentals/
+volume, never by belonging to a government-backed field. The policy score
+is used solely as a secondary sort key and a medium-term tailwind / 分散
+flag. See src/policy_theme_score.py.
+
 This tool ranks only. It does not place trades.
 """
 
@@ -22,9 +29,18 @@ from __future__ import annotations
 import argparse
 import csv
 import math
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+try:
+    from policy_theme_score import EMPTY_RESULT, load_policy_config, score_policy_theme
+    _POLICY_AVAILABLE = True
+except Exception as _policy_exc:  # noqa: BLE001 - policy layer is optional
+    _POLICY_AVAILABLE = False
+    _POLICY_IMPORT_ERROR = _policy_exc
 
 ALERT_THRESHOLD = 70
 WATCH_THRESHOLD = 55
@@ -286,13 +302,34 @@ def score(candidate: Candidate) -> tuple[int, str, list[str]]:
     return total_int, status, reasons
 
 
+def _load_policy():
+    if not _POLICY_AVAILABLE:
+        print(
+            f"政策テーマ層を読み込めませんでした（産業ベータ加点をスキップ）: {_POLICY_IMPORT_ERROR}",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        return load_policy_config()
+    except Exception as exc:  # noqa: BLE001
+        print(f"政策テーマconfig読み込み失敗（スキップ）: {exc}", file=sys.stderr)
+        return None
+
+
 def rank(candidates: Iterable[Candidate]) -> list[dict[str, str]]:
+    policy_config = _load_policy()
     rows = []
     for candidate in candidates:
         total, status, reasons = score(candidate)
         off_high = (
             (candidate.price / candidate.high_52w - 1) * 100 if candidate.high_52w > 0 else 0.0
         )
+        if policy_config is not None:
+            policy = score_policy_theme(
+                f"{candidate.industry} {candidate.themes} {candidate.name}", policy_config
+            )
+        else:
+            policy = EMPTY_RESULT if _POLICY_AVAILABLE else None
         rows.append(
             {
                 "status": status,
@@ -302,6 +339,12 @@ def rank(candidates: Iterable[Candidate]) -> list[dict[str, str]]:
                 "name": candidate.name,
                 "industry": candidate.industry,
                 "themes": candidate.themes,
+                "policy_theme_score": "" if policy is None else str(policy.score),
+                "policy_theme_main": "" if policy is None else policy.main_field,
+                "policy_theme_rank": "" if policy is None else policy.rank,
+                "policy_theme_sub": "" if policy is None else policy.sub_fields,
+                "policy_theme_reason": "" if policy is None else policy.reason,
+                "policy_theme_keywords_hit": "" if policy is None else policy.keywords_hit,
                 "price": f"{candidate.price:.2f}",
                 "turnover": f"{candidate.turnover:.0f}",
                 "rs_6m_pct": f"{candidate.rs_6m_pct:.2f}",
@@ -323,13 +366,25 @@ def rank(candidates: Iterable[Candidate]) -> list[dict[str, str]]:
             }
         )
     order = {"ALERT": 0, "WATCH": 1, "SETUP": 2, "IGNORE": 3}
-    return sorted(rows, key=lambda row: (order.get(row["status"], 9), -int(row["score"])))
+
+    def policy_value(row: dict[str, str]) -> int:
+        raw = row.get("policy_theme_score", "")
+        return int(raw) if raw else 0
+
+    # 並び順: ステータス -> 技術スコア -> 政策テーマスコア(同点時の分散優先のタイブレーク)
+    # 政策スコアは技術スコアの「後」に効く。買い判定はあくまで技術スコアが主。
+    return sorted(
+        rows,
+        key=lambda row: (order.get(row["status"], 9), -int(row["score"]), -policy_value(row)),
+    )
 
 
 def write_rows(rows: list[dict[str, str]], output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "status", "score", "symbol", "market", "name", "industry", "themes",
+        "policy_theme_score", "policy_theme_main", "policy_theme_rank",
+        "policy_theme_sub", "policy_theme_reason", "policy_theme_keywords_hit",
         "price", "turnover", "rs_6m_pct", "off_52w_high_pct",
         "base_depth_pct", "base_len_days", "breakout_new_high", "volume_ratio_20d",
         "atr14_pct", "lot_size", "revenue_growth_pct", "revenue_accel_pp", "risk_flags", "reasons",
@@ -356,11 +411,15 @@ def main() -> None:
     write_rows(rows, args.output)
 
     for row in rows[:20]:
+        policy = row.get("policy_theme_score", "")
+        policy_tag = (
+            f"政策{policy}[{row.get('policy_theme_main', '')}] " if policy and policy != "0" else ""
+        )
         print(
             f"{row['status']:6} {row['score']:>3} {row['symbol']:<10} "
             f"RS={row['rs_6m_pct']:>7}% 高値比={row['off_52w_high_pct']:>7}% "
             f"ベース深さ={row['base_depth_pct']:>6}% 突破={row['breakout_new_high']} "
-            f"{row['reasons']}"
+            f"{policy_tag}{row['reasons']}"
         )
 
 
