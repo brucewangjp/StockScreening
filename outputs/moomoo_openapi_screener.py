@@ -425,15 +425,16 @@ def to_yahoo_symbol(symbol: str) -> str | None:
     return None
 
 
-def fetch_daily_bars_yahoo(symbol: str, timeout: float = 20.0) -> list[dict[str, float]]:
-    """Daily bars from Yahoo Finance chart API (free, no quota). Raises RuntimeError on failure."""
+def fetch_daily_bars_yahoo(symbol: str, timeout: float = 20.0, range_str: str = "2y") -> list[dict[str, float]]:
+    """Daily bars from Yahoo Finance chart API (free, no quota). Raises RuntimeError on failure.
+    range_str: Yahoo range token (e.g. '2y','5y','10y'). Default '2y' keeps existing callers unchanged."""
     import json as json_module
     import urllib.request
 
     yahoo_symbol = to_yahoo_symbol(symbol)
     if yahoo_symbol is None:
         raise RuntimeError(f"{symbol}: Yahooシンボルに変換できない")
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?range=2y&interval=1d"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?range={range_str}&interval=1d"
     request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (bars-fetcher)"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

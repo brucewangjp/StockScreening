@@ -17,3 +17,6 @@ outputs/scan_summary.md
 work/
 *.tar.gz
 SESSION_NOTES.md
+outputs/cache_yahoo_hist/
+outputs/multibaggers_*.csv
+outputs/multibaggers_*.md
