@@ -91,6 +91,15 @@ def compute_run(bars: list[dict], years: int) -> dict | None:
     if len(window) < 30:
         return None
     closes = [b["close"] for b in window]
+    # データ異常ガード: 分割未調整/不良ティックを除外（学習用に偽マルチバガーを排除）
+    #  - 単日で>2.5倍に跳ねる = 逆分割等の未調整
+    #  - 谷が中央値の5%未満 = ゼロ近傍の不良バー（19,000,000倍の正体）
+    med = sorted(closes)[len(closes) // 2]
+    for a, b in zip(closes, closes[1:]):
+        if a > 0 and b / a > 2.5:
+            return None
+    if med > 0 and min(closes) < 0.05 * med:
+        return None
     peak_idx = max(range(len(closes)), key=lambda i: closes[i])
     pre = closes[: peak_idx + 1]
     trough = min(pre)
@@ -144,7 +153,12 @@ def enumerate_universe(api, quote_ctx, market: str, floor: dict, page_size: int,
             market=api_market, filter_list=list(filters.values()), begin=begin, num=page_size
         )
         if ret != api.RET_OK:
-            raise SystemExit(f"get_stock_filter failed for {market}: {payload}")
+            # get_stock_filter は 30秒で10回まで。頻度超過なら待って再試行。
+            if "high frequency" in str(payload).lower() or "频" in str(payload):
+                print(f"  {market}: 頻度制限 → 31秒待機して再試行", file=sys.stderr)
+                time.sleep(31)
+                continue
+            raise RuntimeError(f"get_stock_filter failed for {market}: {payload}")
         last_page, _all, stock_list = payload
         for item in stock_list:
             rows.append(
@@ -215,7 +229,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--symbols", default="", help="検証用: カンマ区切りの銘柄を直接判定（宇宙列挙をスキップ）")
     p.add_argument("--max-per-market", type=int, default=0, help="各市場の上限（0=全件）")
     p.add_argument("--symbol-sleep", type=float, default=0.15)
-    p.add_argument("--page-sleep", type=float, default=2.0)
+    p.add_argument("--page-sleep", type=float, default=3.5, help="get_stock_filterは30秒10回制限のため3秒以上")
     p.add_argument("--page-size", type=int, default=200)
     p.add_argument("--cache-dir", type=Path, default=Path("outputs/cache_yahoo_hist"))
     p.add_argument("--out", type=Path, default=Path("outputs/multibaggers_3y_5x.csv"))
@@ -243,13 +257,17 @@ def main() -> None:
                 if not universe:
                     continue
             else:
-                universe = enumerate_universe(
-                    api, quote_ctx, market, floor, args.page_size, args.page_sleep,
-                    args.max_per_market or None,
-                )
-                # 流動性floor（スナップショットの売買代金）でさらに絞る
-                snaps = fetch_snapshots(api, quote_ctx, [r["symbol"] for r in universe], batch_size=100)
-                universe = [r for r in universe if safe_float(snaps.get(r["symbol"], {}).get("turnover")) >= floor["turnover"]]
+                try:
+                    universe = enumerate_universe(
+                        api, quote_ctx, market, floor, args.page_size, args.page_sleep,
+                        args.max_per_market or None,
+                    )
+                    # 流動性floor（スナップショットの売買代金）でさらに絞る
+                    snaps = fetch_snapshots(api, quote_ctx, [r["symbol"] for r in universe], batch_size=100)
+                    universe = [r for r in universe if safe_float(snaps.get(r["symbol"], {}).get("turnover")) >= floor["turnover"]]
+                except (RuntimeError, SystemExit) as exc:
+                    print(f"{market}: 宇宙列挙に失敗、他市場は継続 ({exc})", file=sys.stderr)
+                    continue
             print(f"{market}: {len(universe)}銘柄を判定", file=sys.stderr)
 
             market_hits: list[dict] = []
