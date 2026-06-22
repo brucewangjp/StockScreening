@@ -20,3 +20,9 @@ SESSION_NOTES.md
 outputs/cache_yahoo_hist/
 outputs/multibaggers_*.csv
 outputs/multibaggers_*.md
+
+# 実行ログ・派生レポート（再生成可能、コミットしない）
+outputs/*.log
+outputs/scan_breakdown_by_layer.txt
+outputs/defense_full_log.txt
+outputs/defense_summary.md
