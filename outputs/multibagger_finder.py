@@ -262,9 +262,13 @@ def main() -> None:
                         api, quote_ctx, market, floor, args.page_size, args.page_sleep,
                         args.max_per_market or None,
                     )
-                    # 流動性floor（スナップショットの売買代金）でさらに絞る
-                    snaps = fetch_snapshots(api, quote_ctx, [r["symbol"] for r in universe], batch_size=100)
-                    universe = [r for r in universe if safe_float(snaps.get(r["symbol"], {}).get("turnover")) >= floor["turnover"]]
+                    # 流動性floor（スナップショット）は母集団が小さい時だけ。全件スキャンでは
+                    # 数千銘柄のスナップショットがレート制限地獄になるためスキップし、cap floorに委ねる。
+                    if len(universe) <= 600:
+                        snaps = fetch_snapshots(api, quote_ctx, [r["symbol"] for r in universe], batch_size=100)
+                        universe = [r for r in universe if safe_float(snaps.get(r["symbol"], {}).get("turnover")) >= floor["turnover"]]
+                    else:
+                        print(f"{market}: {len(universe)}銘柄(大規模) → 流動性スナップショットはスキップ、cap floorで判定", file=sys.stderr)
                 except (RuntimeError, SystemExit) as exc:
                     print(f"{market}: 宇宙列挙に失敗、他市場は継続 ({exc})", file=sys.stderr)
                     continue
