@@ -519,9 +519,10 @@ def summary_rows(trades: list[Trade], segment: str = "全期間") -> list[dict[s
     avg_win = statistics.mean(wins) if wins else 0.0
     avg_loss = statistics.mean(losses) if losses else 0.0
     expectancy = win_rate * avg_win + (1 - win_rate) * avg_loss
-    cumulative = 1.0
-    for value in returns:
-        cumulative *= 1 + value / 100
+    # 注: 直列複利(1取引ずつ全額再投資)は複数銘柄の同時保有がある母集団検証では破綻し、
+    # 天文学的な無意味値になる。代わりに単純合算(各取引に1単位ずつ独立に賭けた合計損益)を出す。
+    # 実際の口座リターンは同時保有数とポジションサイズ(sizer)次第で、本指標とは別物。
+    total_simple = sum(returns)
     sorted_returns = sorted(returns)
     rows = [
         {"metric": "取引数", "value": str(len(trades))},
@@ -535,7 +536,7 @@ def summary_rows(trades: list[Trade], segment: str = "全期間") -> list[dict[s
         {"metric": "最大損失", "value": f"{min(returns):.2f}%"},
         {"metric": "損益係数", "value": "N/A" if gross_loss == 0 else f"{gross_profit / gross_loss:.2f}"},
         {"metric": "下位25%リターン", "value": f"{sorted_returns[max(0, len(sorted_returns) // 4 - 1)]:.2f}%"},
-        {"metric": "等金額・逐次運用リターン", "value": f"{(cumulative - 1) * 100:.2f}%"},
+        {"metric": "全取引リターン単純合算(重複未考慮・口座リターンではない)", "value": f"{total_simple:.0f}%"},
         {"metric": "平均保有日数", "value": f"{statistics.mean([trade.hold_days for trade in trades]):.2f}"},
     ]
     return [{"segment": segment, **row} for row in rows]
@@ -695,8 +696,7 @@ def main() -> None:
                 print(f"{symbol}: K線 {len(bars)}本, シグナル {len(signals)}件, 取引 {len(symbol_trades)}件")
             except Exception as exc:
                 print(f"{symbol}: スキップ ({exc})")
-            if args.bars_source == "moomoo":
-                time.sleep(args.symbol_sleep)
+            time.sleep(args.symbol_sleep if args.bars_source == "moomoo" else 0.1)
     finally:
         if quote_ctx is not None:
             quote_ctx.close()
