@@ -11,12 +11,17 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import math
 import statistics
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from moomoo_openapi_screener import fetch_daily_bars_yahoo  # noqa: E402  (Yahoo日足: クォータなし・分割調整済み)
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,37 @@ def normalize_bars(raw_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return [bar for bar in bars if bar["open"] and bar["high"] and bar["low"] and bar["close"]]
+
+
+def yahoo_range_for(start: str) -> str:
+    """start日付をカバーするYahoo rangeトークンを選ぶ。"""
+    try:
+        years = (dt.date.today() - dt.date.fromisoformat(start)).days / 365.25
+    except ValueError:
+        return "10y"
+    for token, limit in (("2y", 2), ("5y", 5), ("10y", 10)):
+        if years <= limit - 0.2:
+            return token
+    return "max"
+
+
+def fetch_bars(
+    api: Any, quote_ctx: Any, symbol: str, start: str, end: str, source: str, page_sleep: float
+) -> list[dict[str, Any]]:
+    """日足を取得して [start, end] に切り出す。source=yahoo はクォータ消費なし・分割調整済み。"""
+    if source == "yahoo":
+        ybars = fetch_daily_bars_yahoo(symbol, range_str=yahoo_range_for(start))
+        out: list[dict[str, Any]] = []
+        prev: float | None = None
+        for b in ybars:
+            if not (start <= b["date"] <= end):
+                continue
+            bar = dict(b)
+            bar["last_close"] = prev if prev is not None else b["close"]
+            out.append(bar)
+            prev = b["close"]
+        return out
+    return normalize_bars(fetch_history(api, quote_ctx, symbol, start, end, page_sleep))
 
 
 def rolling_average(values: list[float], end_index: int, window: int) -> float:
@@ -552,7 +588,13 @@ def parse_args() -> argparse.Namespace:
         default="runner",
         help="runner=翌日反発狙いの急騰追随, position=ベース突破の中期トレンドフォロー",
     )
-    parser.add_argument("--benchmark", default="", help="Relative strength benchmark, e.g. US.SPY / JP.1306 / HK.02800")
+    parser.add_argument(
+        "--bars-source",
+        choices=["yahoo", "moomoo"],
+        default="yahoo",
+        help="日足の取得元。yahoo=クォータなし・分割調整済み(既定)、moomoo=履歴K線(100銘柄/7日制限)",
+    )
+    parser.add_argument("--benchmark", default="", help="RS基準。yahoo時は ^GSPC/^N225/^HSI または US.SPY 等")
     parser.add_argument("--split-date", default="", help="Walk-forward split date YYYY-MM-DD (in-sample before, out-of-sample after)")
     parser.add_argument("--breakout-window", type=int, default=60, help="Position: prior-high lookback days")
     parser.add_argument("--base-window", type=int, default=35, help="Position: consolidation lookback days")
@@ -613,16 +655,20 @@ def main() -> None:
         take_profit_pct=args.position_take_profit_pct,
     )
 
-    api = import_openapi()
-    quote_ctx = api.OpenQuoteContext(host=args.host, port=args.port)
+    # yahoo モードは OpenD 不要。moomoo モードのみ接続する。
+    api = None
+    quote_ctx = None
+    if args.bars_source == "moomoo":
+        api = import_openapi()
+        quote_ctx = api.OpenQuoteContext(host=args.host, port=args.port)
     trades: list[Trade] = []
     try:
         bench_lookup: dict[str, float] | None = None
         bench_dates: list[str] | None = None
         if args.strategy == "position" and args.benchmark:
             try:
-                bench_bars = normalize_bars(
-                    fetch_history(api, quote_ctx, args.benchmark, args.start, args.end, args.page_sleep)
+                bench_bars = fetch_bars(
+                    api, quote_ctx, args.benchmark, args.start, args.end, args.bars_source, args.page_sleep
                 )
                 bench_lookup = make_benchmark_lookup(bench_bars)
                 bench_dates = sorted(bench_lookup)
@@ -632,7 +678,7 @@ def main() -> None:
 
         for symbol in symbols:
             try:
-                bars = normalize_bars(fetch_history(api, quote_ctx, symbol, args.start, args.end, args.page_sleep))
+                bars = fetch_bars(api, quote_ctx, symbol, args.start, args.end, args.bars_source, args.page_sleep)
                 if args.strategy == "position":
                     signals = make_position_signals(bars, position_signal_config, bench_lookup, bench_dates)
                     symbol_trades = simulate_position_trades_no_overlap(
@@ -649,9 +695,11 @@ def main() -> None:
                 print(f"{symbol}: K線 {len(bars)}本, シグナル {len(signals)}件, 取引 {len(symbol_trades)}件")
             except Exception as exc:
                 print(f"{symbol}: スキップ ({exc})")
-            time.sleep(args.symbol_sleep)
+            if args.bars_source == "moomoo":
+                time.sleep(args.symbol_sleep)
     finally:
-        quote_ctx.close()
+        if quote_ctx is not None:
+            quote_ctx.close()
 
     trades.sort(key=lambda trade: (trade.signal_date, trade.symbol))
     write_trades(trades, args.trades_output, strategy=args.strategy)
