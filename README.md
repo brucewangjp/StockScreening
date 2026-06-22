@@ -126,3 +126,122 @@ float は moomoo FLOAT_SHARE で取得可（Phase 1.5）。
 moomooのJP/HK銘柄テーマは英語/中文で粗く、コンセプト分類にノイズあり（例: 化学企業に
 "Shipbuilding"タグ）。レンズタグは大まかなヒントとして扱い、重点候補は手動で業種確認。
 三菱重工クラスの大型は時価総額上限を上げてスキャンしないと拾えない。
+
+## 学習・検証ツール（買いパイプラインとは独立）
+
+前向きの選股（①〜⑥）とは別に、戦略を学び・検証するためのツール群。買い判定には接続しない。
+
+### マルチバガー学習ツール `outputs/multibagger_finder.py`
+過去N年でM倍（既定3年5倍）になった銘柄をJP/US/HKから抽出。「上がる前の顔」を研究する素材集め。
+- 判定=期間内の最大ラン（ピーク÷ピーク前の谷 ≥ 倍率）。現在倍率・ピークからの下落・
+  今も上昇トレンドか・業種も記録。
+- 宇宙はmoomoo、履歴はYahoo（クォータなし、分割調整済み）。キャッシュで再開可能。
+- 分割アーティファクト除去（単日>2.5倍 or 谷<中央値5% を弾く。JP.8303の19,000,000倍を排除）。
+- **生存バイアスを明示**：概要に「今も上昇○件/減速○件」を出す。過去5倍は結果論。
+- 実行: `python3 outputs/multibagger_finder.py --markets US,JP,HK --years 3 --multiple 5`
+
+### 無バイアス・ユニバース構築 `outputs/build_universe.py`
+回測用の母集団を**リターン非依存**で作る（勝者を後から選ぶ偏りを排除）。
+- 現在の時価総額floorで列挙→各市場ランダム抽出（シード固定）。出力 `backtest_universe.csv`。
+- 残る生存バイアス（上場廃止組が不在）は明示。無料データでは解消不可。
+
+### バックテスト `outputs/moomoo_backtest_runner.py`（Yahoo化済み）
+- `--bars-source yahoo`（既定）でクォータ・OpenD不要。大規模ユニバースを一括検証可。
+- ウォークフォワード（`--split-date`）で検証期間／未知期間に分割。**未知期間の期待値が
+  プラスかが本物の合否**。
+- メトリクス: 期待値(1取引あたり)・損益係数・勝率・勝ち/負け平均。直列複利は重複取引で
+  破綻するため単純合算（口座リターンではないと明記）に変更済み。
+
+### 検証結果（2026-06時点・1500銘柄US/JP/HK・2021-2026・分割2024-06）
+3970取引。**未知期間の期待値 +2.49%/取引、損益係数 1.61、勝率41%**（勝ち+16%/負け-7%の
+非対称、損切り発動3%・50日線割れ77%）。検証期間(+1.47%)より良く過学習なし＝
+トレンド/突破のエッジは汎化する。留保: 生存バイアスで実成績はやや甘め、口座リターンは
+ポジションサイズ次第で別物。
+
+## System Architecture / 処理フロー
+
+現在のシステムは「市場環境判定 → 銘柄取得 → 技術評価＋市場別レンズ →
+ポジション計算 → 人手発注 → 記録 → 回測」の流れで動く。
+
+```mermaid
+flowchart TD
+    A["外部データ源<br/>moomoo OpenD / Yahoo Finance / FRED / 手動CSV"] --> B["市場環境判定<br/>outputs/market_regime.py"]
+    B --> B1["市場レジーム<br/>outputs/market_regime.json"]
+
+    A --> C["銘柄取得・予選<br/>outputs/moomoo_openapi_screener.py"]
+    C --> C1["中期スキャン入力<br/>outputs/position_input.csv"]
+    C --> C2["防衛・造船専用入力<br/>outputs/defense_input.csv"]
+
+    C1 --> D["中期ブレイクアウト評価<br/>outputs/position_trend_scanner.py"]
+    C2 --> D
+
+    D --> E["市場別構造レンズ振り分け<br/>src/market_lens.py"]
+    E --> E1["JP政策テーマ<br/>src/policy_theme_score.py<br/>config/japan_growth_strategy_17fields.yaml"]
+    E --> E2["US構造成長<br/>src/structural_growth_score.py<br/>config/us_structural_themes.yaml"]
+    E --> E3["HK中国政策＋流動性<br/>src/china_policy_score.py<br/>config/hk_china_themes.yaml"]
+
+    D --> F["候補CSV<br/>outputs/position_candidates.csv<br/>outputs/position_candidates_all.csv<br/>outputs/defense_candidates_all.csv"]
+    D --> G["階層ログ<br/>outputs/scan_full_log.txt<br/>outputs/defense_full_log.txt"]
+    D --> H["概要<br/>outputs/scan_summary.md<br/>outputs/defense_summary.md"]
+
+    F --> I["ポジション計算<br/>outputs/position_sizer.py"]
+    B1 --> I
+    I --> J["発注プラン<br/>outputs/position_plan.csv"]
+
+    J --> K["人手確認・moomoo/SBIで発注"]
+    K --> L["取引記録<br/>outputs/trade_journal.csv"]
+
+    F --> M["バックテスト<br/>outputs/moomoo_backtest_runner.py"]
+    M --> N["回測結果<br/>outputs/moomoo_backtest_trades_*.csv<br/>outputs/moomoo_backtest_summary_*.csv"]
+```
+
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant Regime as outputs/market_regime.py
+    participant Screener as outputs/moomoo_openapi_screener.py
+    participant Scanner as outputs/position_trend_scanner.py
+    participant Lens as src/market_lens.py
+    participant Sizer as outputs/position_sizer.py
+    participant Backtest as outputs/moomoo_backtest_runner.py
+
+    User->>Regime: 市場レジームを更新
+    Regime-->>User: outputs/market_regime.json
+
+    User->>Screener: US/JP/HK銘柄を取得・予選
+    Screener-->>User: outputs/position_input.csv
+
+    User->>Scanner: 候補を技術スコア評価
+    Scanner->>Lens: market別レンズを呼び出し
+    Lens-->>Scanner: lens_type / lens_score / lens_flag
+    Scanner-->>User: position_candidates.csv
+    Scanner-->>User: scan_full_log.txt
+    Scanner-->>User: scan_summary.md
+
+    User->>Sizer: 候補CSV + レジーム + 保有状況で株数計算
+    Sizer-->>User: outputs/position_plan.csv
+
+    User->>User: moomoo / SBIで人手発注
+    User->>User: outputs/trade_journal.csvへ記録
+
+    User->>Backtest: 過去データで戦略検証
+    Backtest-->>User: trades CSV + summary CSV
+```
+
+### 主要ソースファイル
+
+- `outputs/market_regime.py`: US/JP/HKの市場環境を赤・黄・緑で判定
+- `outputs/moomoo_openapi_screener.py`: moomoo OpenDから銘柄候補と指標を取得
+- `outputs/position_trend_scanner.py`: 中期ブレイクアウトの技術スコア、ALERT/WATCH/SETUP判定
+- `src/market_lens.py`: JP/US/HKごとの構造レンズへ振り分け
+- `src/policy_theme_score.py`: 日本17戦略分野
+- `src/structural_growth_score.py`: 米国の構造成長テーマ
+- `src/china_policy_score.py`: 香港の中国政策テーマ＋流動性警告
+- `outputs/position_sizer.py`: 候補ごとの株数、損切り、資金配分を計算
+- `outputs/moomoo_backtest_runner.py`: runner/position戦略のバックテスト（Yahoo日足・クォータ/OpenD不要）
+- `outputs/multibagger_finder.py`: 過去N年M倍株の抽出（学習用、買い判定には非接続）
+- `outputs/build_universe.py`: 回測用の無バイアス(リターン非依存)ユニバース構築
+
+設計上のポイントは、**市場レジームはポジション許可を決める層**、
+**技術スコアは買い候補を決める層**、**市場別レンズは追い風・警告を補助表示する層**
+として分離すること。買いスコアにレンズを混ぜないため、後から検証しやすい。
